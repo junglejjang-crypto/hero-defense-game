@@ -246,6 +246,8 @@ function resetGame() {
     gold: 150, life: 20, wave: 0, maxWave: 20,
     inWave: false, toSpawn: 0, spawnTimer: 0, spawnInterval: 0.8,
     superToSpawn: 0, superSpawnTimer: 0, superAppearanceCount: 0,
+    ultraToSpawn: 0, ultraSpawnTimer: 0, ultraAppearanceCount: 0,
+    bonusToSpawn: 0, bonusSpawnTimer: 0,
     heroes: [], monsters: [], projectiles: [], effects: [],
     gameOver: false, victory: false,
   };
@@ -336,14 +338,58 @@ function spawnSuperMonster(wave) {
   });
 }
 
+// 5웨이브마다 등장하는 울트라 몬스터
+//  - HP: 일반 몬스터(트롤)의 20배
+//  - 속도: 일반 몬스터 평균의 1.5배
+function spawnUltraMonster(wave) {
+  const trollBaseHp = 180;
+  const waveMult   = Math.pow(1.03, wave);
+  const ultraHp    = trollBaseHp * waveMult * 20;
+  // 평균 일반 속도 ~50 × 1.5
+  const baseSpeed  = 50 * 1.5 * Math.pow(1.01, wave);
+  const rageSpeed  = baseSpeed * 2.0;   // 격노 시 2배
+  state.monsters.push({
+    id: monsterIdCounter++,
+    x: path[0].x, y: path[0].y,
+    hp: ultraHp, maxHp: ultraHp,
+    speed: baseSpeed, baseSpeed: baseSpeed,
+    rageSpeed: rageSpeed,
+    gold: Math.floor(trollBaseHp * 20 * 0.5 + wave * 25),
+    color: '#0f0818', size: 34,
+    pathIdx: 0, slow: 0, freeze: 0,
+    isUltra: true, enraged: false,
+  });
+}
+
+// 짝수 웨이브마다 추가 등장하는 엘리트 몬스터
+//  - HP: 일반 오크의 2배 / 속도: 1.3배 빠름
+function spawnEliteMonster(wave) {
+  const orcBaseHp  = 75;
+  const waveMult   = Math.pow(1.03, wave);
+  const eliteHp    = orcBaseHp * waveMult * 2;
+  const baseSpeed  = 50 * 1.3 * Math.pow(1.01, wave);
+  state.monsters.push({
+    id: monsterIdCounter++,
+    x: path[0].x, y: path[0].y,
+    hp: eliteHp, maxHp: eliteHp,
+    speed: baseSpeed, baseSpeed: baseSpeed,
+    gold: Math.floor(18 * (1 + wave * 0.06)),
+    color: '#b45309', size: 14,
+    pathIdx: 0, slow: 0, freeze: 0,
+    isElite: true,
+  });
+}
+
 function moveMonster(m, dt) {
-  // 슈퍼 몬스터 격노 체크 (HP 20% 미만)
-  if (m.isSuper && !m.enraged && m.hp / m.maxHp < 0.2) {
+  // 슈퍼/울트라 격노 체크 (HP 20% 미만)
+  if ((m.isSuper || m.isUltra) && !m.enraged && m.hp / m.maxHp < 0.2) {
     m.enraged = true;
     m.speed = m.rageSpeed;
     state.effects.push({
       type: 'explosion', x: m.x, y: m.y,
-      life: 0.6, maxLife: 0.6, radius: 50, color: '#ef4444',
+      life: 0.7, maxLife: 0.7,
+      radius: m.isUltra ? 70 : 50,
+      color: m.isUltra ? '#f59e0b' : '#ef4444',
     });
   }
   let spd = m.speed;
@@ -588,6 +634,19 @@ function draw() {
     ctx.beginPath();
     ctx.ellipse(m.x, m.y + m.size + 2, m.size, m.size * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
+    // 울트라 몬스터 오라 (항상 표시, 격노 시 강화)
+    if (m.isUltra) {
+      const pulse = 0.5 + Math.sin(performance.now() * 0.012) * 0.3;
+      const outerR = m.enraged ? m.size + 26 : m.size + 18;
+      ctx.globalAlpha = pulse * 0.6;
+      const grd = ctx.createRadialGradient(m.x, m.y, m.size, m.x, m.y, outerR);
+      grd.addColorStop(0, 'rgba(251,191,36,0)');
+      grd.addColorStop(0.5, m.enraged ? 'rgba(239,68,68,0.8)' : 'rgba(251,191,36,0.7)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(m.x, m.y, outerR, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     // 슈퍼 몬스터 격노 오라
     if (m.isSuper && m.enraged) {
       const pulse = 0.4 + Math.sin(performance.now() * 0.018) * 0.25;
@@ -603,7 +662,8 @@ function draw() {
     // 본체
     const bodyColor = m.freeze > 0 ? '#7dd3fc'
                     : (m.slow > 0 ? '#a5b4fc'
-                    : (m.isSuper && m.enraged ? '#dc2626' : m.color));
+                    : (m.isUltra && m.enraged ? '#7c2d12'
+                    : (m.isSuper && m.enraged ? '#dc2626' : m.color)));
     ctx.fillStyle = bodyColor;
     ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = m.isSuper ? 2.5 : 1.5; ctx.stroke();
@@ -633,6 +693,50 @@ function draw() {
       ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.fillStyle = '#dc2626';
       ctx.beginPath(); ctx.arc(m.x, cy - 3, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+    // 울트라 몬스터 이중 왕관 + 해골
+    if (m.isUltra) {
+      // 외곽 큰 왕관
+      const cy1 = m.y - m.size - 4;
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(m.x - 16, cy1);
+      ctx.lineTo(m.x - 12, cy1 - 12);
+      ctx.lineTo(m.x - 7,  cy1 - 6);
+      ctx.lineTo(m.x,      cy1 - 16);
+      ctx.lineTo(m.x + 7,  cy1 - 6);
+      ctx.lineTo(m.x + 12, cy1 - 12);
+      ctx.lineTo(m.x + 16, cy1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1.5; ctx.stroke();
+      // 내곽 작은 왕관 (금)
+      const cy2 = cy1 - 2;
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.moveTo(m.x - 8, cy2);
+      ctx.lineTo(m.x - 6, cy2 - 6);
+      ctx.lineTo(m.x - 2, cy2 - 3);
+      ctx.lineTo(m.x,     cy2 - 8);
+      ctx.lineTo(m.x + 2, cy2 - 3);
+      ctx.lineTo(m.x + 6, cy2 - 6);
+      ctx.lineTo(m.x + 8, cy2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#78350f'; ctx.lineWidth = 1; ctx.stroke();
+      // 왕관 위 빨간 보석
+      ctx.fillStyle = m.enraged ? '#ef4444' : '#dc2626';
+      ctx.beginPath(); ctx.arc(m.x, cy1 - 7, 2.5, 0, Math.PI * 2); ctx.fill();
+      // ULTRA 라벨
+      ctx.fillStyle = m.enraged ? '#ef4444' : '#fbbf24';
+      ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('ULTRA', m.x, m.y + m.size + 14);
+    }
+    // 엘리트 몬스터 번개 마크
+    if (m.isElite) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('⚡', m.x, m.y - m.size - 3);
     }
     // HP 바
     const bw = m.size * 2.2, bh = m.isSuper ? 6 : 4;
@@ -830,6 +934,22 @@ function tick() {
         state.superSpawnTimer = 5;
       }
     }
+    if (state.inWave && state.ultraToSpawn > 0) {
+      state.ultraSpawnTimer -= dt;
+      if (state.ultraSpawnTimer <= 0) {
+        spawnUltraMonster(state.wave);
+        state.ultraToSpawn--;
+        state.ultraSpawnTimer = 6;
+      }
+    }
+    if (state.inWave && state.bonusToSpawn > 0) {
+      state.bonusSpawnTimer -= dt;
+      if (state.bonusSpawnTimer <= 0) {
+        spawnEliteMonster(state.wave);
+        state.bonusToSpawn--;
+        state.bonusSpawnTimer = 0.7;
+      }
+    }
     for (const m of state.monsters) if (!m.dead) moveMonster(m, dt);
     for (const h of state.heroes) updateHero(h, dt);
     for (const p of state.projectiles) updateProjectile(p, dt);
@@ -839,7 +959,7 @@ function tick() {
     state.projectiles = state.projectiles.filter(p => !p.dead);
     state.effects = state.effects.filter(e => e.life > 0);
 
-    if (state.inWave && state.toSpawn === 0 && state.superToSpawn === 0 && state.monsters.length === 0) {
+    if (state.inWave && state.toSpawn === 0 && state.superToSpawn === 0 && state.ultraToSpawn === 0 && state.bonusToSpawn === 0 && state.monsters.length === 0) {
       endWave();
     }
     if (state.life <= 0 && !state.gameOver) {
@@ -876,16 +996,39 @@ function startWave() {
   state.toSpawn = 8 + Math.floor(state.wave * 1.8);
   state.spawnInterval = Math.max(0.28, 0.85 - state.wave * 0.025);
   state.spawnTimer = 0.4;
-  // 3웨이브마다 슈퍼 몬스터 1마리 출현 (HP 배율은 등장 횟수마다 상승)
+  // 3웨이브마다 슈퍼 몬스터 출현
   if (state.wave % 3 === 0) {
     state.superAppearanceCount++;
     state.superToSpawn = 1;
     state.superSpawnTimer = 1.5;
     const mult = Math.min(10 + (state.superAppearanceCount - 1) * 5, 20);
-    showMessage(`⚠️ 슈퍼 몬스터 출현! [HP ${mult}배]`, '#ef4444', false);
+    showMessage(`⚠️ 슈퍼 몬스터 출현! [HP ${mult}배]`, '#fb923c', false);
   } else {
     state.superToSpawn = 0;
   }
+
+  // 5웨이브마다 울트라 몬스터 출현 (HP 20배, 속도 1.5배)
+  if (state.wave % 5 === 0) {
+    state.ultraAppearanceCount++;
+    state.ultraToSpawn = 1;
+    state.ultraSpawnTimer = 2.0;
+    showMessage('💀 울트라 몬스터 출현! [HP 20배]', '#ef4444', false);
+  } else {
+    state.ultraToSpawn = 0;
+  }
+
+  // 짝수 웨이브마다 엘리트 부대 추가 출현
+  if (state.wave % 2 === 0) {
+    state.bonusToSpawn = Math.min(2 + Math.floor(state.wave / 4), 6);
+    state.bonusSpawnTimer = 0.5;
+    if (state.wave % 5 !== 0 && state.wave % 3 !== 0) {
+      // 울트라·슈퍼 메시지가 없는 짝수 웨이브에만 별도 메시지
+      showMessage(`⚡ 엘리트 부대 출현! (+${state.bonusToSpawn}마리)`, '#fbbf24', false);
+    }
+  } else {
+    state.bonusToSpawn = 0;
+  }
+
   document.getElementById('wave-btn').disabled = true;
 }
 
