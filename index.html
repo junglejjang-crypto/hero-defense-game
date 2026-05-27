@@ -130,6 +130,7 @@
       <div class="panel">💰 <span id="gold">150</span></div>
       <div class="panel">❤️ <span id="life">20</span></div>
       <div class="panel">🌊 <span id="wave">0</span>/20</div>
+      <div class="panel">🧙 <span id="hero-count">0</span>/20</div>
     </div>
     <div id="menu"></div>
     <div id="message"></div>
@@ -204,25 +205,35 @@ function createHero(type, pos) {
   }
 }
 
+const MAX_HERO_LEVEL = 10;
+const MAX_HERO_COUNT = 20;
+
 function upgradeCost(h) {
-  const base = { knight: 40, archer: 35, mage: 70 }[h.type];
-  return Math.floor(base * Math.pow(1.45, h.level - 1));
+  // Lv1→2 기준: 기사 60, 궁수 50, 마법사 100 / 레벨마다 1.6배 증가
+  const base = { knight: 60, archer: 50, mage: 100 }[h.type];
+  return Math.floor(base * Math.pow(1.6, h.level - 1));
 }
 
 function upgradeHero(h) {
+  if (h.level >= MAX_HERO_LEVEL) return;
   h.level++;
   if (h.type === 'knight') {
-    h.dmg += 8; h.range += 8; h.rotSpeed += 0.25;
+    h.dmg += 9; h.range += 7; h.rotSpeed += 0.22;
+    // 짝수 레벨마다 검 추가 (최대 6)
     if (h.level % 2 === 0 && h.swords < 6) h.swords++;
   } else if (h.type === 'archer') {
-    h.dmg += 5; h.range += 14; h.attackInterval *= 0.9;
+    h.dmg += 6; h.range += 12; h.attackInterval *= 0.88;
+    // 짝수 레벨마다 화살 추가 (최대 5)
     if (h.level % 2 === 0 && h.arrows < 5) h.arrows++;
     if (h.level >= 4) h.pierce = 2;
-    if (h.level >= 6) h.pierce = 3;
-  } else {
-    h.dmg += 14; h.aoeRadius += 5; h.range += 10; h.attackInterval *= 0.92;
+    if (h.level >= 7) h.pierce = 3;
+    if (h.level >= 10) h.pierce = 4;
+  } else { // mage
+    h.dmg += 16; h.aoeRadius += 6; h.range += 10; h.attackInterval *= 0.91;
     if (h.level >= 3) h.canFreeze = true;
     if (h.level >= 5) { h.freezeMax = 6; h.freezeDur = 2.4; }
+    if (h.level >= 8) { h.freezeMax = 4; h.freezeDur = 3.0; }
+    if (h.level >= 10) { h.aoeRadius += 10; h.freezeDur = 3.5; }
   }
 }
 
@@ -234,7 +245,7 @@ function resetGame() {
   state = {
     gold: 150, life: 20, wave: 0, maxWave: 20,
     inWave: false, toSpawn: 0, spawnTimer: 0, spawnInterval: 0.8,
-    superToSpawn: 0, superSpawnTimer: 0,
+    superToSpawn: 0, superSpawnTimer: 0, superAppearanceCount: 0,
     heroes: [], monsters: [], projectiles: [], effects: [],
     gameOver: false, victory: false,
   };
@@ -282,36 +293,46 @@ function spawnMonster(wave) {
   else if (wave < 14) tier = Math.random() < 0.3 ? 0 : Math.random() < 0.7 ? 1 : 2;
   else tier = Math.random() < 0.5 ? 1 : 2;
   const t = types[tier];
-  const hpMult = 1 + wave * 0.32;
+  // 매 라운드마다 HP +3%, 스피드 +1% 복리 증가
+  const hpMult   = Math.pow(1.03, wave);
+  const spdMult  = Math.pow(1.01, wave);
+  const finalHp  = t.hp * hpMult;
+  const finalSpd = t.speed * spdMult;
   state.monsters.push({
     id: monsterIdCounter++,
     x: path[0].x, y: path[0].y,
-    hp: t.hp * hpMult, maxHp: t.hp * hpMult,
-    speed: t.speed, baseSpeed: t.speed,
+    hp: finalHp, maxHp: finalHp,
+    speed: finalSpd, baseSpeed: finalSpd,
     gold: Math.floor(t.gold * (1 + wave * 0.06)),
     color: t.color, size: t.size,
     pathIdx: 0, slow: 0, freeze: 0,
   });
 }
 
-// 5웨이브마다 등장하는 슈퍼 몬스터
-//  - HP: 기본 몬스터(트롤)의 3.3배
-//  - 평소 속도: 다른 몬스터의 약 50%
-//  - HP 20% 미만: 격노 모드 (속도 2배 가속)
+// 3웨이브마다 등장하는 슈퍼 몬스터
+//  - HP: 일반 몬스터(트롤) 기준 10배 → 15배 → 20배 (이후 20배 고정)
+//  - 평소 속도: 일반 몬스터의 50% 수준
+//  - HP 20% 미만: 격노 — 일반 몬스터 최고 속도의 2배
 function spawnSuperMonster(wave) {
-  const baseHp = 600;            // 트롤 180 의 3.3배
-  const baseSpeed = 25;          // 트롤 35 의 약 70%, 일반 평균 50의 50%
-  const hpMult = 1 + wave * 0.35;
+  const trollBaseHp = 180;
+  const waveMult    = Math.pow(1.03, wave);             // 일반 몬스터와 같은 파급력
+  // 등장 횟수별 배율: 1번=10배, 2번=15배, 3번+=20배
+  const appearance  = state.superAppearanceCount;
+  const hpMultiplier = Math.min(10 + (appearance - 1) * 5, 20);
+  const superHp     = trollBaseHp * waveMult * hpMultiplier;
+  const baseSpeed   = 30 * Math.pow(1.01, wave);        // 일반의 약 50%, 동일 웨이브 성장 적용
+  const rageSpeed   = 65 * 2 * Math.pow(1.01, wave);    // 최고속(고블린 65)의 2배
   state.monsters.push({
     id: monsterIdCounter++,
     x: path[0].x, y: path[0].y,
-    hp: baseHp * hpMult, maxHp: baseHp * hpMult,
+    hp: superHp, maxHp: superHp,
     speed: baseSpeed, baseSpeed: baseSpeed,
-    rageSpeed: 130,              // 일반 최고 속도(고블린 65)의 2배
-    gold: Math.floor(80 * (1 + wave * 0.08)),
+    rageSpeed: rageSpeed,
+    gold: Math.floor(trollBaseHp * hpMultiplier * 0.4 + wave * 15),
     color: '#7f1d1d', size: 26,
     pathIdx: 0, slow: 0, freeze: 0,
     isSuper: true, enraged: false,
+    hpLabel: hpMultiplier,        // HP 배수 표시용
   });
 }
 
@@ -855,11 +876,13 @@ function startWave() {
   state.toSpawn = 8 + Math.floor(state.wave * 1.8);
   state.spawnInterval = Math.max(0.28, 0.85 - state.wave * 0.025);
   state.spawnTimer = 0.4;
-  // 5웨이브마다 슈퍼 몬스터 출현 (5: 1마리, 10: 2마리, 15: 3마리, 20: 4마리)
-  if (state.wave % 5 === 0) {
-    state.superToSpawn = Math.min(Math.ceil(state.wave / 5), 4);
+  // 3웨이브마다 슈퍼 몬스터 1마리 출현 (HP 배율은 등장 횟수마다 상승)
+  if (state.wave % 3 === 0) {
+    state.superAppearanceCount++;
+    state.superToSpawn = 1;
     state.superSpawnTimer = 1.5;
-    showMessage('⚠️ 슈퍼 몬스터 출현!', '#ef4444', false);
+    const mult = Math.min(10 + (state.superAppearanceCount - 1) * 5, 20);
+    showMessage(`⚠️ 슈퍼 몬스터 출현! [HP ${mult}배]`, '#ef4444', false);
   } else {
     state.superToSpawn = 0;
   }
@@ -870,6 +893,7 @@ function updateUI() {
   document.getElementById('gold').textContent = state.gold;
   document.getElementById('life').textContent = state.life;
   document.getElementById('wave').textContent = state.wave;
+  document.getElementById('hero-count').textContent = state.heroes.length;
   for (const btn of document.querySelectorAll('.build-btn')) {
     const t = btn.dataset.type;
     btn.disabled = (state.gold < HERO_COSTS[t] && placementType !== t) || state.gameOver;
@@ -924,9 +948,10 @@ function showMenu(hero) {
 
 function buildMenuContent(hero) {
   const upCost = upgradeCost(hero);
+  const isMaxLevel = hero.level >= MAX_HERO_LEVEL;
   const title = document.createElement('div');
   title.style.cssText = 'padding:4px 4px 8px; font-weight:bold; font-size:14px;';
-  title.innerHTML = `<span class="${hero.type}-c">${HERO_NAMES[hero.type]}</span> Lv ${hero.level}`;
+  title.innerHTML = `<span class="${hero.type}-c">${HERO_NAMES[hero.type]}</span> Lv ${hero.level}${isMaxLevel ? ' <span style="color:#fbbf24">MAX</span>' : ''}`;
   menu.appendChild(title);
 
   const info = document.createElement('div');
@@ -939,14 +964,20 @@ function buildMenuContent(hero) {
   menu.appendChild(info);
 
   const upBtn = document.createElement('button');
-  upBtn.innerHTML = `⬆️ Lv ${hero.level + 1} <span style="float:right">${upCost}G</span>`;
-  upBtn.disabled = state.gold < upCost;
-  upBtn.onclick = () => {
-    if (state.gold < upCost) return;
-    state.gold -= upCost;
-    upgradeHero(hero);
-    showMenu(hero);
-  };
+  if (isMaxLevel) {
+    upBtn.innerHTML = `✨ 최대 레벨 달성 (Lv ${MAX_HERO_LEVEL})`;
+    upBtn.disabled = true;
+    upBtn.style.color = '#fbbf24';
+  } else {
+    upBtn.innerHTML = `⬆️ Lv ${hero.level + 1} <span style="float:right">${upCost.toLocaleString()}G</span>`;
+    upBtn.disabled = state.gold < upCost;
+    upBtn.onclick = () => {
+      if (state.gold < upCost) return;
+      state.gold -= upCost;
+      upgradeHero(hero);
+      showMenu(hero);
+    };
+  }
   menu.appendChild(upBtn);
 
   const refund = Math.floor(HERO_COSTS[hero.type] * 0.6 + (hero.level - 1) * 25);
@@ -976,6 +1007,10 @@ function handleTap(x, y) {
     const cost = HERO_COSTS[placementType];
     if (state.gold < cost) {
       showMessage('골드 부족!', '#ef4444', false);
+      return;
+    }
+    if (state.heroes.length >= MAX_HERO_COUNT) {
+      showMessage(`영웅 배치 한도 초과! (최대 ${MAX_HERO_COUNT}명)`, '#f97316', false);
       return;
     }
     if (!isValidPlacement(x, y)) return;
