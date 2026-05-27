@@ -249,7 +249,7 @@
         <ul style="margin-top:6px">
           <li>최대 <b>20명</b> 배치, 최대 <b>Lv10</b></li>
           <li>레벨 4·7·10마다 <b>외형 강화</b></li>
-          <li>마법사 <b>Lv3</b>부터 빙결 사용</li>
+          <li>마법사 <b>Lv4</b>부터 빙결 사용</li>
         </ul>
         <h3>👹 몬스터</h3>
         <table>
@@ -338,9 +338,9 @@ const MAX_HERO_LEVEL = 10;
 const MAX_HERO_COUNT = 20;
 
 function upgradeCost(h) {
-  // Lv1→2 기준: 기사 60, 궁수 50, 마법사 100 / 레벨마다 1.6배 증가
+  // Lv1→2 기준: 기사 60, 궁수 50, 마법사 100 / 레벨마다 1.5배 증가
   const base = { knight: 60, archer: 50, mage: 100 }[h.type];
-  return Math.floor(base * Math.pow(1.6, h.level - 1));
+  return Math.floor(base * Math.pow(1.5, h.level - 1));
 }
 
 function upgradeHero(h) {
@@ -358,11 +358,11 @@ function upgradeHero(h) {
     if (h.level >= 7) h.pierce = 3;
     if (h.level >= 10) h.pierce = 4;
   } else { // mage
-    h.dmg += 16; h.aoeRadius += 6; h.range += 10; h.attackInterval *= 0.91;
-    if (h.level >= 3) h.canFreeze = true;
-    if (h.level >= 5) { h.freezeMax = 6; h.freezeDur = 2.4; }
-    if (h.level >= 8) { h.freezeMax = 4; h.freezeDur = 3.0; }
-    if (h.level >= 10) { h.aoeRadius += 10; h.freezeDur = 3.5; }
+    h.dmg += 18; h.aoeRadius += 6; h.range += 10; h.attackInterval *= 0.90;
+    if (h.level >= 4) h.canFreeze = true;           // Lv4부터 빙결
+    if (h.level >= 6) { h.freezeMax = 6; h.freezeDur = 2.4; }
+    if (h.level >= 9) { h.freezeMax = 3; h.freezeDur = 3.2; }
+    if (h.level >= 10) { h.aoeRadius += 12; h.freezeDur = 4.0; }
   }
 }
 
@@ -376,7 +376,7 @@ let bgInterval = null;
 
 function resetGame() {
   state = {
-    gold: 150, life: 20, wave: 0, maxWave: 40,
+    gold: 200, life: 20, wave: 0, maxWave: 40,
     inWave: false, toSpawn: 0, spawnTimer: 0, spawnInterval: 0.8,
     superToSpawn: 0, superSpawnTimer: 0, superAppearanceCount: 0,
     ultraToSpawn: 0, ultraSpawnTimer: 0, ultraAppearanceCount: 0,
@@ -420,18 +420,19 @@ function isValidPlacement(x, y) {
 // ===== 몬스터 =====
 function spawnMonster(wave) {
   const types = [
-    { name: 'goblin', hp: 28,  speed: 65, gold: 4,  color: '#84cc16', size: 11 },
-    { name: 'orc',    hp: 75,  speed: 50, gold: 9,  color: '#9a3412', size: 15 },
-    { name: 'troll',  hp: 180, speed: 35, gold: 22, color: '#581c87', size: 20 },
+    { name: 'goblin', hp: 28,  speed: 65, gold: 5,  color: '#84cc16', size: 11 },
+    { name: 'orc',    hp: 75,  speed: 50, gold: 11, color: '#9a3412', size: 15 },
+    { name: 'troll',  hp: 180, speed: 35, gold: 26, color: '#581c87', size: 20 },
   ];
   let tier;
-  if (wave < 4) tier = 0;
-  else if (wave < 9) tier = Math.random() < 0.6 ? 0 : 1;
+  if (wave < 4)       tier = 0;
+  else if (wave < 9)  tier = Math.random() < 0.6 ? 0 : 1;
   else if (wave < 14) tier = Math.random() < 0.3 ? 0 : Math.random() < 0.7 ? 1 : 2;
-  else tier = Math.random() < 0.5 ? 1 : 2;
+  else if (wave < 21) tier = Math.random() < 0.5 ? 1 : 2;
+  else                tier = Math.random() < 0.25 ? 1 : 2; // 2부: 트롤 위주
   const t = types[tier];
-  // 매 라운드마다 HP +3%, 스피드 +3% 복리 증가 / 지옥 모드 강화
-  const hpMult   = Math.pow(1.03, wave);
+  // 매 라운드마다 HP +4%, 스피드 +3% 복리 증가 / 지옥 모드 강화
+  const hpMult   = Math.pow(1.04, wave);
   const spdMult  = Math.pow(1.03, wave);
   const hellHp   = state.hellMode ? 1.5 : 1;
   const hellSpd  = state.hellMode ? 1.3 : 1;
@@ -442,7 +443,7 @@ function spawnMonster(wave) {
     x: currentPath[0].x, y: currentPath[0].y,
     hp: finalHp, maxHp: finalHp,
     speed: finalSpd, baseSpeed: finalSpd,
-    gold: Math.floor(t.gold * (1 + wave * 0.06)),
+    gold: Math.floor(t.gold * (1 + wave * 0.04)),
     color: t.color, size: t.size,
     pathIdx: 0, slow: 0, freeze: 0,
   });
@@ -454,7 +455,7 @@ function spawnMonster(wave) {
 //  - HP 20% 미만: 격노 — 일반 몬스터 최고 속도의 2배
 function spawnSuperMonster(wave) {
   const trollBaseHp = 180;
-  const waveMult    = Math.pow(1.03, wave);             // 일반 몬스터와 같은 파급력
+  const waveMult    = Math.pow(1.04, wave);             // HP 기준 +4%/라운드
   // 등장 횟수별 배율: 1번=10배, 2번=15배, 3번+=20배
   const appearance  = state.superAppearanceCount;
   const hpMultiplier = Math.min(10 + (appearance - 1) * 5, 20);
@@ -480,7 +481,7 @@ function spawnSuperMonster(wave) {
 //  - 속도: 일반 몬스터 평균의 1.5배
 function spawnUltraMonster(wave) {
   const trollBaseHp = 180;
-  const waveMult   = Math.pow(1.03, wave);
+  const waveMult   = Math.pow(1.04, wave);
   const ultraHp    = trollBaseHp * waveMult * 20;
   // 평균 일반 속도 ~50 × 1.5
   const baseSpeed  = 50 * 1.5 * Math.pow(1.03, wave);
@@ -502,7 +503,7 @@ function spawnUltraMonster(wave) {
 //  - HP: 일반 오크의 2배 / 속도: 1.3배 빠름
 function spawnEliteMonster(wave) {
   const orcBaseHp  = 75;
-  const waveMult   = Math.pow(1.03, wave);
+  const waveMult   = Math.pow(1.04, wave);
   const eliteHp    = orcBaseHp * waveMult * 2;
   const baseSpeed  = 50 * 1.3 * Math.pow(1.03, wave);
   state.monsters.push({
@@ -510,7 +511,7 @@ function spawnEliteMonster(wave) {
     x: currentPath[0].x, y: currentPath[0].y,
     hp: eliteHp, maxHp: eliteHp,
     speed: baseSpeed, baseSpeed: baseSpeed,
-    gold: Math.floor(18 * (1 + wave * 0.06)),
+    gold: Math.floor(22 * (1 + wave * 0.04)),
     color: '#b45309', size: 14,
     pathIdx: 0, slow: 0, freeze: 0,
     isElite: true,
@@ -614,7 +615,7 @@ function updateHero(h, dt) {
         if (cd > 0) continue;
         if (Math.hypot(m.x - sx, m.y - sy) < m.size + 16) {
           damageMonster(m, h.dmg);
-          h.hitCooldown.set(m.id, 0.35);
+          h.hitCooldown.set(m.id, 0.28);
         }
       }
     }
@@ -1233,7 +1234,7 @@ function tick() {
 
 function endWave() {
   state.inWave = false;
-  const bonus = 30 + state.wave * 6;
+  const bonus = 40 + state.wave * 8;
   state.gold += bonus;
   if (state.wave >= state.maxWave) {
     state.gameOver = true; state.victory = true;
@@ -1269,9 +1270,9 @@ function startWave() {
     showMessage('🔥 지옥 모드!! 모든 몬스터 강화!', '#ef4444', false);
   }
 
-  // 10% 복리 증가 (최대 80마리)
-  state.toSpawn = Math.min(Math.floor(8 * Math.pow(1.10, state.wave - 1)), 80);
-  state.spawnInterval = Math.max(0.25, 0.85 - state.wave * 0.018);
+  // 15% 복리 증가 (최대 90마리)
+  state.toSpawn = Math.min(Math.floor(8 * Math.pow(1.15, state.wave - 1)), 90);
+  state.spawnInterval = Math.max(0.22, 0.85 - state.wave * 0.018);
   state.spawnTimer = 0.4;
   // 3웨이브마다 슈퍼 몬스터 출현
   if (state.wave % 3 === 0) {
@@ -1384,7 +1385,7 @@ function buildMenuContent(hero) {
   let extra = '';
   if (hero.type === 'knight') extra = `검 ${hero.swords} | 회전속도 ${hero.rotSpeed.toFixed(1)}`;
   else if (hero.type === 'archer') extra = `화살 ${hero.arrows}발 | 관통 ${hero.pierce} | ${(1/hero.attackInterval).toFixed(1)}/s`;
-  else extra = `광역 ${Math.floor(hero.aoeRadius)} | 빙결 ${hero.canFreeze ? '✅ ' + hero.freezeDur.toFixed(1) + '초' : '❌ (Lv3)'}`;
+  else extra = `광역 ${Math.floor(hero.aoeRadius)} | 빙결 ${hero.canFreeze ? '✅ ' + hero.freezeDur.toFixed(1) + '초' : '❌ (Lv4)'}`;
   info.innerHTML = `데미지: <b>${Math.floor(hero.dmg)}</b> | 사거리: <b>${Math.floor(hero.range)}</b><br>${extra}`;
   menu.appendChild(info);
 
