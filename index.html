@@ -171,7 +171,7 @@
     <div id="ui">
       <div class="panel">💰 <span id="gold">150</span></div>
       <div class="panel">❤️ <span id="life">20</span></div>
-      <div class="panel">🌊 <span id="wave">0</span>/20</div>
+      <div class="panel">🌊 <span id="wave">0</span>/40</div>
       <div class="panel">🧙 <span id="hero-count">0</span>/20</div>
     </div>
     <div id="menu"></div>
@@ -225,10 +225,12 @@
           <li>배치된 영웅 탭 → 업그레이드·판매</li>
           <li>키보드 <b>1/2/3</b> → 영웅 선택 (PC)</li>
         </ul>
-        <h3>⚡ 배속 모드</h3>
+        <h3>⚡ 배속 모드 / 지옥 모드</h3>
         <ul>
           <li><b>1× / 2× / 3×</b> 버튼으로 게임 속도 조절</li>
           <li>다른 탭으로 이동해도 게임 자동 진행</li>
+          <li>🔥 <b>4·8·12·14·18라운드</b> — 지옥 모드 (배경 변화, 몬스터 강화)</li>
+          <li>🗺️ <b>21라운드</b>부터 새로운 전장으로 이동</li>
         </ul>
         <h3>📷 슈퍼몬스터 이미지</h3>
         <ul>
@@ -246,6 +248,7 @@
         </table>
         <ul style="margin-top:6px">
           <li>최대 <b>20명</b> 배치, 최대 <b>Lv10</b></li>
+          <li>레벨 4·7·10마다 <b>외형 강화</b></li>
           <li>마법사 <b>Lv3</b>부터 빙결 사용</li>
         </ul>
         <h3>👹 몬스터</h3>
@@ -253,7 +256,7 @@
           <tr><th>종류</th><th>출현</th><th>특징</th></tr>
           <tr><td>고블린/오크/트롤</td><td>매 웨이브</td><td>기본 몬스터</td></tr>
           <tr><td>⚡ 엘리트</td><td>짝수 웨이브</td><td>HP 2배·빠름</td></tr>
-          <tr><td>👑 슈퍼</td><td>3웨이브마다</td><td>HP 10→20배·격노</td></tr>
+          <tr><td>👑 슈퍼</td><td>3웨이브마다</td><td>HP 10→20배·50%↓광폭화</td></tr>
           <tr><td>💀 울트라</td><td>5웨이브마다</td><td>HP 20배·속도 1.5배</td></tr>
         </table>
       </div>
@@ -263,7 +266,9 @@
       <li>🔀 <b>기사</b>는 코너/교차로에 — 회전 검이 경로를 가장 많이 커버</li>
       <li>❄️ <b>마법사 Lv3+</b>를 슈퍼/울트라 몬스터 진입 전 목에 배치 — 빙결로 통제</li>
       <li>🏹 <b>궁수 다발</b>로 일반 몬스터를 빠르게 처리하고 골드 확보</li>
-      <li>⚠️ HP 20% 아래 슈퍼/울트라는 <b>격노</b>해 빨라짐 — 빙결 타이밍 중요!</li>
+      <li>⚠️ <b>슈퍼 몬스터</b>는 HP 50%부터 광폭화 — 빙결로 먼저 멈춰야!</li>
+      <li>🗺️ 21라운드엔 지도가 바뀜 — 영웅 판매 후 재배치 준비</li>
+      <li>🔥 지옥 모드엔 몬스터 HP·속도 대폭 증가 — 방어선 미리 강화!</li>
     </ul>
     <button id="tutorial-close">게임 시작! ▶</button>
   </div>
@@ -288,6 +293,22 @@ const path = [
   {x: 280,  y: 560},
   {x: 1130, y: 560},
 ];
+
+// 2부 (21라운드~) 새 전장 — 역방향 지그재그
+const path2 = [
+  {x: -30,  y: 540},
+  {x: 320,  y: 540},
+  {x: 320,  y: 360},
+  {x: 640,  y: 360},
+  {x: 640,  y: 560},
+  {x: 900,  y: 560},
+  {x: 900,  y: 200},
+  {x: 440,  y: 200},
+  {x: 440,  y: 80},
+  {x: 1130, y: 80},
+];
+
+let currentPath = path;
 
 // ===== 영웅 설정 =====
 const HERO_COSTS = { knight: 50, archer: 40, mage: 90 };
@@ -355,17 +376,19 @@ let bgInterval = null;
 
 function resetGame() {
   state = {
-    gold: 150, life: 20, wave: 0, maxWave: 20,
+    gold: 150, life: 20, wave: 0, maxWave: 40,
     inWave: false, toSpawn: 0, spawnTimer: 0, spawnInterval: 0.8,
     superToSpawn: 0, superSpawnTimer: 0, superAppearanceCount: 0,
     ultraToSpawn: 0, ultraSpawnTimer: 0, ultraAppearanceCount: 0,
     bonusToSpawn: 0, bonusSpawnTimer: 0,
     heroes: [], monsters: [], projectiles: [], effects: [],
     gameOver: false, victory: false,
+    hellMode: false,
   };
   selectedHero = null;
   placementType = null;
   monsterIdCounter = 0;
+  currentPath = path;
   document.getElementById('wave-btn').disabled = false;
   document.getElementById('wave-btn').textContent = '▶ 웨이브 시작';
   document.getElementById('menu').style.display = 'none';
@@ -385,8 +408,8 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 
 function isValidPlacement(x, y) {
   if (x < 24 || x > W - 24 || y < 24 || y > H - 24) return false;
-  for (let i = 0; i < path.length - 1; i++) {
-    if (distToSegment(x, y, path[i].x, path[i].y, path[i+1].x, path[i+1].y) < 32) return false;
+  for (let i = 0; i < currentPath.length - 1; i++) {
+    if (distToSegment(x, y, currentPath[i].x, currentPath[i].y, currentPath[i+1].x, currentPath[i+1].y) < 32) return false;
   }
   for (const h of state.heroes) {
     if (Math.hypot(h.x - x, h.y - y) < 38) return false;
@@ -407,14 +430,16 @@ function spawnMonster(wave) {
   else if (wave < 14) tier = Math.random() < 0.3 ? 0 : Math.random() < 0.7 ? 1 : 2;
   else tier = Math.random() < 0.5 ? 1 : 2;
   const t = types[tier];
-  // 매 라운드마다 HP +3%, 스피드 +1% 복리 증가
+  // 매 라운드마다 HP +3%, 스피드 +3% 복리 증가 / 지옥 모드 강화
   const hpMult   = Math.pow(1.03, wave);
-  const spdMult  = Math.pow(1.01, wave);
-  const finalHp  = t.hp * hpMult;
-  const finalSpd = t.speed * spdMult;
+  const spdMult  = Math.pow(1.03, wave);
+  const hellHp   = state.hellMode ? 1.5 : 1;
+  const hellSpd  = state.hellMode ? 1.3 : 1;
+  const finalHp  = t.hp * hpMult * hellHp;
+  const finalSpd = t.speed * spdMult * hellSpd;
   state.monsters.push({
     id: monsterIdCounter++,
-    x: path[0].x, y: path[0].y,
+    x: currentPath[0].x, y: currentPath[0].y,
     hp: finalHp, maxHp: finalHp,
     speed: finalSpd, baseSpeed: finalSpd,
     gold: Math.floor(t.gold * (1 + wave * 0.06)),
@@ -434,11 +459,11 @@ function spawnSuperMonster(wave) {
   const appearance  = state.superAppearanceCount;
   const hpMultiplier = Math.min(10 + (appearance - 1) * 5, 20);
   const superHp     = trollBaseHp * waveMult * hpMultiplier;
-  const baseSpeed   = 30 * Math.pow(1.01, wave);        // 일반의 약 50%, 동일 웨이브 성장 적용
-  const rageSpeed   = 65 * 2 * Math.pow(1.01, wave);    // 최고속(고블린 65)의 2배
+  const baseSpeed   = 30 * Math.pow(1.03, wave);        // 일반의 약 50%, 동일 웨이브 성장 적용
+  const rageSpeed   = baseSpeed * 2;                    // 기본 속도의 2배 (50% 광폭화)
   state.monsters.push({
     id: monsterIdCounter++,
-    x: path[0].x, y: path[0].y,
+    x: currentPath[0].x, y: currentPath[0].y,
     hp: superHp, maxHp: superHp,
     speed: baseSpeed, baseSpeed: baseSpeed,
     rageSpeed: rageSpeed,
@@ -458,11 +483,11 @@ function spawnUltraMonster(wave) {
   const waveMult   = Math.pow(1.03, wave);
   const ultraHp    = trollBaseHp * waveMult * 20;
   // 평균 일반 속도 ~50 × 1.5
-  const baseSpeed  = 50 * 1.5 * Math.pow(1.01, wave);
+  const baseSpeed  = 50 * 1.5 * Math.pow(1.03, wave);
   const rageSpeed  = baseSpeed * 2.0;   // 격노 시 2배
   state.monsters.push({
     id: monsterIdCounter++,
-    x: path[0].x, y: path[0].y,
+    x: currentPath[0].x, y: currentPath[0].y,
     hp: ultraHp, maxHp: ultraHp,
     speed: baseSpeed, baseSpeed: baseSpeed,
     rageSpeed: rageSpeed,
@@ -479,10 +504,10 @@ function spawnEliteMonster(wave) {
   const orcBaseHp  = 75;
   const waveMult   = Math.pow(1.03, wave);
   const eliteHp    = orcBaseHp * waveMult * 2;
-  const baseSpeed  = 50 * 1.3 * Math.pow(1.01, wave);
+  const baseSpeed  = 50 * 1.3 * Math.pow(1.03, wave);
   state.monsters.push({
     id: monsterIdCounter++,
-    x: path[0].x, y: path[0].y,
+    x: currentPath[0].x, y: currentPath[0].y,
     hp: eliteHp, maxHp: eliteHp,
     speed: baseSpeed, baseSpeed: baseSpeed,
     gold: Math.floor(18 * (1 + wave * 0.06)),
@@ -493,8 +518,9 @@ function spawnEliteMonster(wave) {
 }
 
 function moveMonster(m, dt) {
-  // 슈퍼/울트라 격노 체크 (HP 20% 미만)
-  if ((m.isSuper || m.isUltra) && !m.enraged && m.hp / m.maxHp < 0.2) {
+  // 슈퍼: HP 50% → 광폭화(2배 속도) / 울트라: HP 20% → 격노
+  const rageThreshold = m.isSuper ? 0.5 : 0.2;
+  if ((m.isSuper || m.isUltra) && !m.enraged && m.hp / m.maxHp < rageThreshold) {
     m.enraged = true;
     m.speed = m.rageSpeed;
     state.effects.push({
@@ -508,8 +534,8 @@ function moveMonster(m, dt) {
   if (m.freeze > 0) { m.freeze -= dt; spd = 0; }
   else if (m.slow > 0) { m.slow -= dt; spd *= 0.5; }
   let remain = dt;
-  while (remain > 0 && m.pathIdx < path.length - 1) {
-    const next = path[m.pathIdx + 1];
+  while (remain > 0 && m.pathIdx < currentPath.length - 1) {
+    const next = currentPath[m.pathIdx + 1];
     const dx = next.x - m.x, dy = next.y - m.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.001) { m.pathIdx++; continue; }
@@ -703,31 +729,65 @@ function updateProjectile(p, dt) {
 
 // ===== 렌더링 =====
 function draw() {
-  ctx.fillStyle = '#3f6b3a';
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(255,255,255,0.03)';
-  for (let i = 0; i < 80; i++) {
-    const x = (i * 137) % W, y = (i * 257) % H;
-    ctx.fillRect(x, y, 3, 3);
+  const hell = state.hellMode;
+  const isPhase2 = currentPath === path2;
+
+  // ── 배경 ──
+  if (hell) {
+    ctx.fillStyle = '#1a0000';
+    ctx.fillRect(0, 0, W, H);
+    // 불꽃 파티클
+    const t = performance.now() * 0.001;
+    for (let i = 0; i < 55; i++) {
+      const hx = ((i * 137 + t * 38 * (i % 3 + 1)) % W + W) % W;
+      const hy = H - ((i * 79 + t * 28 * ((i + 1) % 4 + 1)) % (H * 0.75));
+      const r = 2 + Math.sin(t * 3 + i) * 1.5;
+      ctx.globalAlpha = 0.05 + Math.abs(Math.sin(t * 2.5 + i * 0.6)) * 0.1;
+      ctx.fillStyle = i % 3 === 0 ? '#ef4444' : (i % 3 === 1 ? '#f97316' : '#fbbf24');
+      ctx.fillRect(hx, hy, r, r * 2.5);
+    }
+    ctx.globalAlpha = 1;
+    // 붉은 안개
+    const fog = ctx.createLinearGradient(0, H, 0, 0);
+    fog.addColorStop(0, 'rgba(130,0,0,0.25)');
+    fog.addColorStop(1, 'rgba(60,0,0,0.07)');
+    ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H);
+  } else if (isPhase2) {
+    ctx.fillStyle = '#1e2a1a';  // 2부: 어두운 숲
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(150,220,100,0.025)';
+    for (let i = 0; i < 80; i++) {
+      ctx.fillRect((i * 113) % W, (i * 239) % H, 4, 4);
+    }
+  } else {
+    ctx.fillStyle = '#3f6b3a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    for (let i = 0; i < 80; i++) {
+      ctx.fillRect((i * 137) % W, (i * 257) % H, 3, 3);
+    }
   }
 
-  ctx.strokeStyle = '#5d4628';
+  // ── 경로 ──
+  const roadOuter = hell ? '#4a0000' : (isPhase2 ? '#3d2b0a' : '#5d4628');
+  const roadInner = hell ? '#991b1b' : (isPhase2 ? '#7a5a1e' : '#a98660');
+  ctx.strokeStyle = roadOuter;
   ctx.lineWidth = 38; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath();
-  path.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  currentPath.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
   ctx.stroke();
-  ctx.strokeStyle = '#a98660'; ctx.lineWidth = 30;
+  ctx.strokeStyle = roadInner; ctx.lineWidth = 30;
   ctx.beginPath();
-  path.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  currentPath.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
   ctx.stroke();
   ctx.fillStyle = '#dc2626';
-  ctx.beginPath(); ctx.arc(path[0].x + 30, path[0].y, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(currentPath[0].x + 30, currentPath[0].y, 14, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'white'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('출발', path[0].x + 30, path[0].y + 5);
+  ctx.fillText('출발', currentPath[0].x + 30, currentPath[0].y + 5);
   ctx.fillStyle = '#1e40af';
-  ctx.beginPath(); ctx.arc(path[path.length-1].x - 30, path[path.length-1].y, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(currentPath[currentPath.length-1].x - 30, currentPath[currentPath.length-1].y, 14, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'white';
-  ctx.fillText('성', path[path.length-1].x - 30, path[path.length-1].y + 5);
+  ctx.fillText('성', currentPath[currentPath.length-1].x - 30, currentPath[currentPath.length-1].y + 5);
 
   if (selectedHero && !placementType) {
     ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3;
@@ -870,9 +930,9 @@ function draw() {
                   : hpRatio > 0.25 ? '#fbbf24' : '#ef4444';
     ctx.fillRect(m.x - bw/2, barY, bw * hpRatio, bh);
     if (m.isSuper) {
-      // 20% 격노 임계선
+      // 50% 광폭화 임계선
       ctx.fillStyle = '#fde047';
-      ctx.fillRect(m.x - bw/2 + bw * 0.2 - 1, barY - 1, 2, bh + 2);
+      ctx.fillRect(m.x - bw/2 + bw * 0.5 - 1, barY - 1, 2, bh + 2);
     }
     if (m.freeze > 0) {
       ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = 2;
@@ -966,70 +1026,144 @@ function drawHero(h) {
   ctx.ellipse(h.x, h.y + 18, 18, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  const lv = h.level;
+  const t = performance.now() * 0.001;
+
+  // ── 레벨 7+ 오라 링 ──
+  if (lv >= 7) {
+    const pulse = 0.35 + Math.sin(t * 3.5) * 0.22;
+    const auraC = lv >= 10 ? `rgba(251,191,36,${pulse})` : `rgba(167,139,250,${pulse * 0.8})`;
+    ctx.beginPath(); ctx.arc(h.x, h.y, lv >= 10 ? 22 : 19, 0, Math.PI * 2);
+    ctx.strokeStyle = auraC; ctx.lineWidth = lv >= 10 ? 4 : 2.5; ctx.stroke();
+  }
+
   if (h.type === 'knight') {
+    const bodyC   = lv >= 10 ? '#fbbf24' : lv >= 7 ? '#c084fc' : lv >= 4 ? '#60a5fa' : '#94a3b8';
+    const armorC  = lv >= 10 ? '#b45309' : lv >= 7 ? '#7e22ce' : lv >= 4 ? '#1d4ed8' : '#475569';
+    const swordC  = lv >= 10 ? '#ffffff' : lv >= 7 ? '#f97316' : lv >= 4 ? '#fcd34d' : '#e5e7eb';
+    const handleC = lv >= 10 ? '#f59e0b' : lv >= 7 ? '#7c2d12' : lv >= 4 ? '#92400e' : '#78350f';
+
     for (let i = 0; i < h.swords; i++) {
       const a = h.swordAngle + (Math.PI * 2 / h.swords) * i;
-      const tipX = h.x + Math.cos(a) * h.range;
-      const tipY = h.y + Math.sin(a) * h.range;
+      const tipX  = h.x + Math.cos(a) * h.range;
+      const tipY  = h.y + Math.sin(a) * h.range;
       const baseX = h.x + Math.cos(a) * (h.range - 26);
       const baseY = h.y + Math.sin(a) * (h.range - 26);
-      ctx.strokeStyle = '#78350f'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.strokeStyle = handleC; ctx.lineWidth = 5; ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(h.x + Math.cos(a) * (h.range - 34), h.y + Math.sin(a) * (h.range - 34));
-      ctx.lineTo(baseX, baseY);
-      ctx.stroke();
-      ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.lineTo(tipX, tipY);
-      ctx.stroke();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.lineTo(tipX, tipY);
-      ctx.stroke();
+      ctx.lineTo(baseX, baseY); ctx.stroke();
+      ctx.strokeStyle = swordC; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, tipY); ctx.stroke();
+      if (lv >= 7) {
+        // 검 빛남 (오렌지/흰색 글로우)
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = lv >= 10 ? '#fff' : '#fdba74'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, tipY); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, tipY); ctx.stroke();
+      }
     }
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = bodyC;
     ctx.beginPath(); ctx.arc(h.x, h.y, 14, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(h.x - 9, h.y - 14, 18, 7);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(h.x - 5, h.y - 11, 10, 2);
+    ctx.fillStyle = armorC; ctx.fillRect(h.x - 9, h.y - 14, 18, 7);
+    ctx.fillStyle = '#000';   ctx.fillRect(h.x - 5, h.y - 11, 10, 2);
+    // Lv10 왕관
+    if (lv >= 10) {
+      ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('♔', h.x, h.y - 17);
+    }
+
   } else if (h.type === 'archer') {
-    ctx.fillStyle = '#34d399';
+    const bodyC = lv >= 10 ? '#fbbf24' : lv >= 7 ? '#0284c7' : lv >= 4 ? '#0d9488' : '#34d399';
+    const capC  = lv >= 10 ? '#92400e' : lv >= 7 ? '#075985' : lv >= 4 ? '#134e4a' : '#065f46';
+    const bowC  = lv >= 10 ? '#f59e0b' : lv >= 7 ? '#be185d' : lv >= 4 ? '#a16207' : '#7c2d12';
+
+    ctx.fillStyle = bodyC;
     ctx.beginPath(); ctx.arc(h.x, h.y, 13, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#065f46';
+    ctx.fillStyle = capC;
     ctx.beginPath(); ctx.arc(h.x, h.y - 5, 11, Math.PI, 0); ctx.fill();
     ctx.stroke();
-    ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(h.x + 12, h.y, 10, -Math.PI/2.5, Math.PI/2.5);
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = '#818cf8';
+    ctx.strokeStyle = bowC; ctx.lineWidth = lv >= 7 ? 3 : 2;
+    ctx.beginPath(); ctx.arc(h.x + 12, h.y, 10, -Math.PI/2.5, Math.PI/2.5); ctx.stroke();
+    // Lv7+ 두 번째 활 잔상 (연사 표현)
+    if (lv >= 7) {
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = bowC; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(h.x + 15, h.y, 10, -Math.PI/2.5, Math.PI/2.5); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // Lv10 황금 화살 장식
+    if (lv >= 10) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(h.x - 8, h.y); ctx.lineTo(h.x + 8, h.y); ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath(); ctx.moveTo(h.x + 8, h.y); ctx.lineTo(h.x + 5, h.y - 3); ctx.lineTo(h.x + 5, h.y + 3); ctx.fill();
+    }
+
+  } else { // mage
+    const bodyC = lv >= 10 ? '#f8fafc' : lv >= 7 ? '#e879f9' : lv >= 4 ? '#a78bfa' : '#818cf8';
+    const hatC  = lv >= 10 ? '#7c3aed' : lv >= 7 ? '#86198f' : lv >= 4 ? '#5b21b6' : '#3730a3';
+    const tipC  = lv >= 10 ? '#fef08a' : lv >= 7 ? '#f0abfc' : lv >= 4 ? '#fde68a' : '#fbbf24';
+    const orbC  = lv >= 10 ? (h.canFreeze ? '#7dd3fc' : '#fbbf24')
+                : lv >= 7  ? (h.canFreeze ? '#22d3ee' : '#f0abfc')
+                : lv >= 4  ? (h.canFreeze ? '#38bdf8' : '#c4b5fd')
+                : (h.canFreeze ? '#7dd3fc' : '#a5b4fc');
+
+    ctx.fillStyle = bodyC;
     ctx.beginPath(); ctx.arc(h.x, h.y, 13, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#3730a3';
+    ctx.fillStyle = hatC;
     ctx.beginPath();
     ctx.moveTo(h.x - 11, h.y - 7);
     ctx.lineTo(h.x + 11, h.y - 7);
-    ctx.lineTo(h.x + 1, h.y - 26);
+    ctx.lineTo(h.x + 1,  h.y - 26);
     ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.stroke();
-    ctx.fillStyle = '#fbbf24';
-    ctx.beginPath(); ctx.arc(h.x + 1, h.y - 26, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = tipC;
+    ctx.beginPath(); ctx.arc(h.x + 1, h.y - 26, 2.5, 0, Math.PI * 2); ctx.fill();
+    // Lv4+ 별 장식
+    if (lv >= 4) {
+      ctx.fillStyle = tipC; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('★', h.x + 1, h.y - 31);
+    }
     ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(h.x + 13, h.y + 6); ctx.lineTo(h.x + 17, h.y - 14); ctx.stroke();
-    ctx.fillStyle = h.canFreeze ? '#7dd3fc' : '#a5b4fc';
-    ctx.beginPath(); ctx.arc(h.x + 17, h.y - 16, 4, 0, Math.PI * 2); ctx.fill();
+    const orbR = lv >= 7 ? 5.5 : 4;
+    ctx.fillStyle = orbC;
+    ctx.beginPath(); ctx.arc(h.x + 17, h.y - 16, orbR, 0, Math.PI * 2); ctx.fill();
+    // Lv7+ 오브 글로우
+    if (lv >= 7) {
+      ctx.globalAlpha = 0.45;
+      const orbGrad = ctx.createRadialGradient(h.x + 17, h.y - 16, 0, h.x + 17, h.y - 16, 11);
+      orbGrad.addColorStop(0, orbC); orbGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = orbGrad;
+      ctx.beginPath(); ctx.arc(h.x + 17, h.y - 16, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // Lv10 마법진
+    if (lv >= 10) {
+      const pulse = 0.4 + Math.sin(t * 4) * 0.28;
+      ctx.globalAlpha = pulse * 0.5;
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(h.x, h.y, 18, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#a78bfa';
+      ctx.beginPath(); ctx.arc(h.x, h.y, 23, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
+
+  // 레벨 뱃지
+  const badgeColor = lv >= 10 ? '#fbbf24' : lv >= 7 ? '#c084fc' : lv >= 4 ? '#60a5fa' : '#94a3b8';
   ctx.fillStyle = '#000';
   ctx.fillRect(h.x - 14, h.y + 22, 28, 14);
-  ctx.fillStyle = '#fbbf24';
+  ctx.fillStyle = badgeColor;
   ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('Lv ' + h.level, h.x, h.y + 33);
+  ctx.fillText('Lv ' + lv, h.x, h.y + 33);
 }
 
 // ===== 메인 루프 =====
@@ -1112,12 +1246,32 @@ function endWave() {
   }
 }
 
+function isHellWave(wave) {
+  return [4, 8, 12, 14, 18].includes(wave);
+}
+
 function startWave() {
   if (state.inWave || state.gameOver || state.wave >= state.maxWave) return;
   state.wave++;
   state.inWave = true;
-  state.toSpawn = 8 + Math.floor(state.wave * 1.8);
-  state.spawnInterval = Math.max(0.28, 0.85 - state.wave * 0.025);
+
+  // ── 21라운드: 새 전장으로 이동 ──
+  if (state.wave === 21) {
+    currentPath = path2;
+    state.monsters = [];
+    state.projectiles = [];
+    showMessage('🗺️ 새로운 전장! — 2부 시작!', '#818cf8', false);
+  }
+
+  // ── 지옥 모드 ──
+  state.hellMode = isHellWave(state.wave);
+  if (state.hellMode) {
+    showMessage('🔥 지옥 모드!! 모든 몬스터 강화!', '#ef4444', false);
+  }
+
+  // 10% 복리 증가 (최대 80마리)
+  state.toSpawn = Math.min(Math.floor(8 * Math.pow(1.10, state.wave - 1)), 80);
+  state.spawnInterval = Math.max(0.25, 0.85 - state.wave * 0.018);
   state.spawnTimer = 0.4;
   // 3웨이브마다 슈퍼 몬스터 출현
   if (state.wave % 3 === 0) {
