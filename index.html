@@ -635,7 +635,7 @@ function updateHero(h, dt) {
         if (cd > 0) continue;
         if (Math.hypot(m.x - sx, m.y - sy) < m.size + 16) {
           damageMonster(m, h.dmg);
-          h.hitCooldown.set(m.id, 0.28);
+          h.hitCooldown.set(m.id, 0.40);
         }
       }
     }
