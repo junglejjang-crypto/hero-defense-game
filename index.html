@@ -570,7 +570,7 @@ function moveMonster(m, dt) {
       remain = 0;
     }
   }
-  if (m.pathIdx >= path.length - 1) {
+  if (m.pathIdx >= mPath.length - 1) {
     state.life--;
     m.dead = true;
   }
