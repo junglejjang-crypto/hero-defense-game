@@ -383,6 +383,7 @@ function upgradeHero(h) {
 let state, selectedHero, placementType, lastTime, monsterIdCounter;
 let mouseX = -1, mouseY = -1, mouseInCanvas = false;
 let gameSpeed = 1;
+const BASE_SPEED = 1.5;  // 기본 진행 속도 (1× 버튼 = 이 배속으로 실행)
 let superMonsterImg = null;
 let rafId = null;
 let bgInterval = null;
@@ -1272,7 +1273,7 @@ function tick() {
   const now = performance.now();
   const rawDt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
-  updateGameLogic(rawDt * gameSpeed);
+  updateGameLogic(rawDt * BASE_SPEED * gameSpeed);
   draw();
   rafId = requestAnimationFrame(tick);
 }
@@ -1364,7 +1365,8 @@ function updateUI() {
   document.getElementById('hero-count').textContent = state.heroes.length;
   for (const btn of document.querySelectorAll('.build-btn')) {
     const t = btn.dataset.type;
-    btn.disabled = (state.gold < HERO_COSTS[t] && placementType !== t) || state.gameOver;
+    const atCap = state.heroes.length >= MAX_HERO_COUNT;
+    btn.disabled = (state.gold < HERO_COSTS[t] && placementType !== t) || state.gameOver || (atCap && placementType !== t);
     btn.classList.toggle('active', placementType === t);
   }
   // 업그레이드 버튼 실시간 활성화
@@ -1575,6 +1577,10 @@ function triggerBuild(type) {
   if (placementType === type) {
     placementType = null;
   } else {
+    if (state.heroes.length >= MAX_HERO_COUNT) {
+      showMessage(`영웅 한도 초과! (최대 ${MAX_HERO_COUNT}기)`, '#f97316', false);
+      return;
+    }
     if (state.gold < HERO_COSTS[type]) {
       showMessage('골드 부족!', '#ef4444', false);
       return;
@@ -1654,7 +1660,7 @@ document.addEventListener('visibilitychange', () => {
         const now = performance.now();
         const dt = Math.min((now - bgLast) / 1000, 0.05);
         bgLast = now;
-        updateGameLogic(dt * gameSpeed);
+        updateGameLogic(dt * BASE_SPEED * gameSpeed);
       }, 50);
     }
   } else {
